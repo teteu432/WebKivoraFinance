@@ -1,140 +1,98 @@
-# Web Kivora Finance V2
+# Web Kivora Finance V2.2.1
 
-Sistema web de gestão financeira da Web Kivora, desenvolvido com React + Vite + TypeScript.
+Correção de autenticação: mensagens específicas para limites do Supabase e bloqueio local contra envio duplicado do formulário de login/cadastro.
 
-## O que mudou na V2
+# Web Kivora Finance — V2.2
 
-A V2 mantém as funcionalidades da V1.2 e adiciona uma camada real de autenticação e persistência preparada para produção:
+Sistema web de gestão financeira da Web Kivora, desenvolvido com React + Vite + TypeScript e integração opcional com Supabase.
 
-- Supabase Auth com e-mail e senha;
-- criação de conta;
-- confirmação de e-mail compatível com o fluxo do Supabase;
-- recuperação e redefinição de senha;
-- sessão persistente;
-- PostgreSQL via Supabase;
-- tabelas para perfis, transações, contas e metas;
-- Row Level Security (RLS) em todas as tabelas financeiras;
-- cada usuário acessa somente os próprios registros;
-- perfil do usuário salvo no banco;
-- modo demonstração ainda disponível e totalmente separado dos dados reais;
-- exportação XLSX profissional preservada;
-- interface e gráfico em SVG da tela de login preservados.
+## Novidades da V2.2
 
-## 1. Instalar dependências
+- Validações mais fortes em transações, contas, metas, perfil e autenticação.
+- Salvamento assíncrono: formulários só fecham depois que o Supabase confirma a operação.
+- Feedback visual com notificações de sucesso, erro e informação.
+- Confirmações próprias para exclusões e ações críticas, sem `window.confirm`.
+- Central de alertas no sino do topo para contas vencidas ou próximas do vencimento.
+- Indicador de conexão offline.
+- Tela de erro global para evitar uma tela quebrada caso ocorra uma exceção inesperada.
+- Senha com indicador de força no cadastro e na redefinição.
+- Mostrar/ocultar senha.
+- Recuperação de senha com proteção contra envios repetidos em sequência.
+- Configurações de perfil sincronizadas corretamente após o carregamento do Supabase.
+- Estados de carregamento em salvar, excluir, baixar XLSX, marcar contas e recuperar senha.
+- Melhorias de acessibilidade em botões, modais e navegação.
+- Mantida a correção da V2.1 para o problema de travamento ao usar o botão direito.
+
+## Recursos existentes
+
+- Dashboard financeiro.
+- Gráficos de pizza e colunas.
+- Receitas e despesas.
+- Contas a pagar e receber com prioridade por vencimento.
+- Planejamento e metas.
+- Estratégia financeira.
+- Calendário financeiro.
+- Relatórios profissionais em XLSX.
+- Modo demonstração local.
+- Supabase Auth.
+- PostgreSQL no Supabase.
+- Row Level Security (RLS) por usuário.
+- Recuperação e redefinição de senha.
+
+## Configuração
+
+Instale as dependências:
 
 ```bash
 npm install
+```
+
+Crie `.env.local` na raiz:
+
+```env
+VITE_SUPABASE_URL=https://SEU-PROJETO.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_xxxxxxxxx
+```
+
+Nunca coloque `service_role` ou secret keys no frontend.
+
+Execute:
+
+```bash
 npm run dev
 ```
 
-## 2. Criar o projeto no Supabase
+## Banco de dados
 
-Crie um projeto no Supabase e abra o **SQL Editor**.
+A V2.2 não exige nenhuma migração adicional em relação à V2.1. Se o banco da V2 já está funcionando, mantenha-o como está.
 
-Execute o arquivo:
+Para uma instalação nova, execute no SQL Editor do Supabase:
 
 ```text
 supabase/migrations/001_initial_schema.sql
 ```
 
-Ele cria as tabelas, índices, gatilhos e políticas RLS necessárias.
+## Atualizando a partir da V2.1
 
-## 3. Configurar as variáveis públicas
+Se você já configurou seu `.env.local`, mantenha esse arquivo no computador. Ele não está incluído no ZIP e não deve ser enviado para o GitHub.
 
-Copie `.env.example` para `.env.local`:
+Você pode substituir o código da V2.1 pelo da V2.2 e manter o mesmo projeto Supabase. As tabelas existentes (`profiles`, `transactions`, `accounts` e `goals`) continuam compatíveis.
 
-```bash
-cp .env.example .env.local
-```
+## Verificação recomendada
 
-No Windows PowerShell:
+Após atualizar, teste:
 
-```powershell
-Copy-Item .env.example .env.local
-```
+1. Login e logout.
+2. Cadastro de uma transação.
+3. Edição e exclusão de uma transação.
+4. Cadastro e baixa de uma conta.
+5. Criação e exclusão de uma meta.
+6. Alteração do nome em Configurações.
+7. Sino de notificações.
+8. Exportação XLSX.
+9. Recuperação de senha.
+10. Clique com botão direito em várias páginas para confirmar que o travamento não retornou.
 
-Preencha:
+## Segurança
 
-```env
-VITE_SUPABASE_URL=https://SEU-PROJETO.supabase.co
-VITE_SUPABASE_PUBLISHABLE_KEY=SUA_CHAVE_PUBLICA
-```
-
-A aplicação também aceita `VITE_SUPABASE_ANON_KEY` como compatibilidade para projetos que ainda exibem a antiga chave `anon`.
-
-**Nunca coloque `service_role` no frontend.**
-
-## 4. Configurar URLs de autenticação
-
-No painel do Supabase, em Authentication / URL Configuration, configure o endereço local e depois o domínio de produção.
-
-Para desenvolvimento:
-
-```text
-http://localhost:5173
-```
-
-Adicione também como redirect permitido:
-
-```text
-http://localhost:5173/login
-http://localhost:5173/redefinir-senha
-```
-
-Quando publicar na Vercel, inclua as mesmas rotas no domínio real.
-
-## 5. Testar contas reais
-
-1. Abra `/login`.
-2. Clique em **Criar conta**.
-3. Informe nome, e-mail e senha com pelo menos 8 caracteres.
-4. Se a confirmação de e-mail estiver habilitada no Supabase, confirme o cadastro pelo e-mail recebido.
-5. Entre normalmente.
-6. Cadastre uma transação, uma conta e uma meta.
-7. Saia da conta e entre novamente.
-8. Verifique que os dados continuam no banco.
-9. Crie um segundo usuário e confirme que ele não enxerga os dados do primeiro.
-
-Esse último teste é essencial para validar o isolamento por RLS.
-
-## 6. Modo demonstração
-
-A tela de login possui **Entrar no modo demonstração**. Nesse modo, os dados continuam sendo armazenados localmente no navegador e nunca são misturados com as contas reais do Supabase.
-
-## Segurança implementada
-
-- nenhuma senha é armazenada pelo frontend;
-- autenticação delegada ao Supabase Auth;
-- chave `service_role` não é utilizada no navegador;
-- RLS por `auth.uid()`;
-- políticas separadas de SELECT, INSERT, UPDATE e DELETE;
-- `user_id` indexado nas tabelas financeiras;
-- constraints no banco para tipos, status e valores;
-- exclusão em cascata dos dados quando a conta de autenticação é removida;
-- sessão gerenciada pelo SDK oficial do Supabase.
-
-## Estrutura principal da V2
-
-```text
-src/
-├── contexts/
-│   ├── AuthContext.tsx
-│   └── FinanceContext.tsx
-├── lib/
-│   └── supabase.ts
-├── services/
-│   ├── databaseService.ts
-│   └── storageService.ts
-├── pages/
-│   ├── Login.tsx
-│   ├── ForgotPassword.tsx
-│   ├── ResetPassword.tsx
-│   └── ...
-supabase/
-└── migrations/
-    └── 001_initial_schema.sql
-```
-
-## Próxima etapa sugerida
-
-Depois de validar a V2 com duas ou mais contas, a próxima fase é a V3 comercial: painel administrativo da Web Kivora, planos, assinatura, cobrança e controles de produto.
+A aplicação utiliza uma chave pública do Supabase no frontend. A proteção dos dados depende das políticas de RLS no PostgreSQL, que restringem cada registro ao usuário autenticado. Credenciais administrativas não devem ser expostas no navegador.

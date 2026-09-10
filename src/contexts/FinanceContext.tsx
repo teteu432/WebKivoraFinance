@@ -3,6 +3,7 @@ import { defaultAccounts, defaultGoals, defaultPreferences, defaultTransactions 
 import { databaseService } from '../services/databaseService'
 import { storageService } from '../services/storageService'
 import type { Account, Goal, Transaction, UserPreferences } from '../types'
+import { normalizeText } from '../utils/validation'
 import { useAuth } from './AuthContext'
 
 type FinanceContextValue = {
@@ -12,16 +13,17 @@ type FinanceContextValue = {
   preferences: UserPreferences
   loading: boolean
   error: string
-  setPreferences: (value: UserPreferences) => void
-  addTransaction: (value: Omit<Transaction, 'id'>) => void
-  updateTransaction: (value: Transaction) => void
-  removeTransaction: (id: string) => void
-  addAccount: (value: Omit<Account, 'id'>) => void
-  updateAccount: (value: Account) => void
-  removeAccount: (id: string) => void
-  addGoal: (value: Omit<Goal, 'id'>) => void
-  updateGoal: (value: Goal) => void
-  removeGoal: (id: string) => void
+  clearError: () => void
+  setPreferences: (value: UserPreferences) => Promise<void>
+  addTransaction: (value: Omit<Transaction, 'id'>) => Promise<void>
+  updateTransaction: (value: Transaction) => Promise<void>
+  removeTransaction: (id: string) => Promise<void>
+  addAccount: (value: Omit<Account, 'id'>) => Promise<void>
+  updateAccount: (value: Account) => Promise<void>
+  removeAccount: (id: string) => Promise<void>
+  addGoal: (value: Omit<Goal, 'id'>) => Promise<void>
+  updateGoal: (value: Goal) => Promise<void>
+  removeGoal: (id: string) => Promise<void>
   resetDemo: () => void
   refresh: () => Promise<void>
 }
@@ -29,7 +31,19 @@ type FinanceContextValue = {
 const FinanceContext = createContext<FinanceContextValue | null>(null)
 const uid = () => crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`
 
-const errorMessage = (error: unknown) => error instanceof Error ? error.message : 'Não foi possível concluir a operação.'
+const errorMessage = (error: unknown) => {
+  const rawMessage = error instanceof Error
+    ? error.message
+    : typeof error === 'object' && error !== null && 'message' in error && typeof (error as { message?: unknown }).message === 'string'
+      ? (error as { message: string }).message
+      : 'Não foi possível concluir a operação.'
+  const message = rawMessage || 'Não foi possível concluir a operação.'
+  const normalized = message.toLowerCase()
+  if (normalized.includes('failed to fetch') || normalized.includes('network')) return 'Não foi possível conectar ao servidor. Verifique sua internet e tente novamente.'
+  if (normalized.includes('jwt') || normalized.includes('session')) return 'Sua sessão expirou. Entre novamente para continuar.'
+  if (normalized.includes('row-level security') || normalized.includes('permission denied')) return 'Você não tem permissão para realizar esta operação.'
+  return message
+}
 
 export function FinanceProvider({ children }: { children: ReactNode }) {
   const { user, userId, isAuthenticated, isDemo } = useAuth()
@@ -39,6 +53,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
   const [preferences, setPreferencesState] = useState<UserPreferences>(defaultPreferences)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+
+  const clearError = useCallback(() => setError(''), [])
 
   const loadDemo = useCallback(() => {
     setTransactions(storageService.get('wk_transactions', defaultTransactions))
@@ -70,7 +86,9 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       setGoals(gl)
       setPreferencesState(pref)
     } catch (err) {
-      setError(errorMessage(err))
+      const message = errorMessage(err)
+      setError(message)
+      throw new Error(message)
     } finally {
       setLoading(false)
     }
@@ -85,10 +103,21 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       setError('')
       return
     }
-    void refresh()
+    void refresh().catch(() => undefined)
   }, [isAuthenticated, refresh])
 
   const persistDemo = (key: string, value: unknown) => storageService.set(key, value)
+
+  const run = useCallback(async (operation: () => Promise<void>) => {
+    setError('')
+    try {
+      await operation()
+    } catch (err) {
+      const message = errorMessage(err)
+      setError(message)
+      throw new Error(message)
+    }
+  }, [])
 
   const value = useMemo<FinanceContextValue>(() => ({
     transactions,
@@ -97,123 +126,140 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
     preferences,
     loading,
     error,
+    clearError,
     refresh,
-    setPreferences: (next) => {
-      setPreferencesState(next)
+    setPreferences: async (next) => {
+      const clean: UserPreferences = {
+        displayName: normalizeText(next.displayName) || 'Usuário',
+        mode: next.mode,
+      }
       if (isDemo) {
-        persistDemo('wk_preferences', next)
+        setPreferencesState(clean)
+        persistDemo('wk_preferences', clean)
         return
       }
-      if (!userId) return
-      void databaseService.updatePreferences(userId, next).catch((err) => setError(errorMessage(err)))
+      if (!userId) throw new Error('Usuário não autenticado.')
+      await run(async () => {
+        await databaseService.updatePreferences(userId, clean)
+        setPreferencesState(clean)
+      })
     },
-    addTransaction: (item) => {
+    addTransaction: async (item) => {
       if (isDemo) {
         const next = [{ ...item, id: uid() }, ...transactions]
         setTransactions(next)
         persistDemo('wk_transactions', next)
         return
       }
-      if (!userId) return
-      void databaseService.createTransaction(userId, item)
-        .then((created) => setTransactions((prev) => [created, ...prev]))
-        .catch((err) => setError(errorMessage(err)))
+      if (!userId) throw new Error('Usuário não autenticado.')
+      await run(async () => {
+        const created = await databaseService.createTransaction(userId, item)
+        setTransactions((prev) => [created, ...prev])
+      })
     },
-    updateTransaction: (item) => {
+    updateTransaction: async (item) => {
       if (isDemo) {
         const next = transactions.map((x) => x.id === item.id ? item : x)
         setTransactions(next)
         persistDemo('wk_transactions', next)
         return
       }
-      if (!userId) return
-      void databaseService.updateTransaction(userId, item)
-        .then((updated) => setTransactions((prev) => prev.map((x) => x.id === updated.id ? updated : x)))
-        .catch((err) => setError(errorMessage(err)))
+      if (!userId) throw new Error('Usuário não autenticado.')
+      await run(async () => {
+        const updated = await databaseService.updateTransaction(userId, item)
+        setTransactions((prev) => prev.map((x) => x.id === updated.id ? updated : x))
+      })
     },
-    removeTransaction: (id) => {
+    removeTransaction: async (id) => {
       if (isDemo) {
         const next = transactions.filter((x) => x.id !== id)
         setTransactions(next)
         persistDemo('wk_transactions', next)
         return
       }
-      if (!userId) return
-      void databaseService.deleteTransaction(userId, id)
-        .then(() => setTransactions((prev) => prev.filter((x) => x.id !== id)))
-        .catch((err) => setError(errorMessage(err)))
+      if (!userId) throw new Error('Usuário não autenticado.')
+      await run(async () => {
+        await databaseService.deleteTransaction(userId, id)
+        setTransactions((prev) => prev.filter((x) => x.id !== id))
+      })
     },
-    addAccount: (item) => {
+    addAccount: async (item) => {
       if (isDemo) {
         const next = [{ ...item, id: uid() }, ...accounts]
         setAccounts(next)
         persistDemo('wk_accounts', next)
         return
       }
-      if (!userId) return
-      void databaseService.createAccount(userId, item)
-        .then((created) => setAccounts((prev) => [created, ...prev]))
-        .catch((err) => setError(errorMessage(err)))
+      if (!userId) throw new Error('Usuário não autenticado.')
+      await run(async () => {
+        const created = await databaseService.createAccount(userId, item)
+        setAccounts((prev) => [created, ...prev])
+      })
     },
-    updateAccount: (item) => {
+    updateAccount: async (item) => {
       if (isDemo) {
         const next = accounts.map((x) => x.id === item.id ? item : x)
         setAccounts(next)
         persistDemo('wk_accounts', next)
         return
       }
-      if (!userId) return
-      void databaseService.updateAccount(userId, item)
-        .then((updated) => setAccounts((prev) => prev.map((x) => x.id === updated.id ? updated : x)))
-        .catch((err) => setError(errorMessage(err)))
+      if (!userId) throw new Error('Usuário não autenticado.')
+      await run(async () => {
+        const updated = await databaseService.updateAccount(userId, item)
+        setAccounts((prev) => prev.map((x) => x.id === updated.id ? updated : x))
+      })
     },
-    removeAccount: (id) => {
+    removeAccount: async (id) => {
       if (isDemo) {
         const next = accounts.filter((x) => x.id !== id)
         setAccounts(next)
         persistDemo('wk_accounts', next)
         return
       }
-      if (!userId) return
-      void databaseService.deleteAccount(userId, id)
-        .then(() => setAccounts((prev) => prev.filter((x) => x.id !== id)))
-        .catch((err) => setError(errorMessage(err)))
+      if (!userId) throw new Error('Usuário não autenticado.')
+      await run(async () => {
+        await databaseService.deleteAccount(userId, id)
+        setAccounts((prev) => prev.filter((x) => x.id !== id))
+      })
     },
-    addGoal: (item) => {
+    addGoal: async (item) => {
       if (isDemo) {
         const next = [{ ...item, id: uid() }, ...goals]
         setGoals(next)
         persistDemo('wk_goals', next)
         return
       }
-      if (!userId) return
-      void databaseService.createGoal(userId, item)
-        .then((created) => setGoals((prev) => [created, ...prev]))
-        .catch((err) => setError(errorMessage(err)))
+      if (!userId) throw new Error('Usuário não autenticado.')
+      await run(async () => {
+        const created = await databaseService.createGoal(userId, item)
+        setGoals((prev) => [created, ...prev])
+      })
     },
-    updateGoal: (item) => {
+    updateGoal: async (item) => {
       if (isDemo) {
         const next = goals.map((x) => x.id === item.id ? item : x)
         setGoals(next)
         persistDemo('wk_goals', next)
         return
       }
-      if (!userId) return
-      void databaseService.updateGoal(userId, item)
-        .then((updated) => setGoals((prev) => prev.map((x) => x.id === updated.id ? updated : x)))
-        .catch((err) => setError(errorMessage(err)))
+      if (!userId) throw new Error('Usuário não autenticado.')
+      await run(async () => {
+        const updated = await databaseService.updateGoal(userId, item)
+        setGoals((prev) => prev.map((x) => x.id === updated.id ? updated : x))
+      })
     },
-    removeGoal: (id) => {
+    removeGoal: async (id) => {
       if (isDemo) {
         const next = goals.filter((x) => x.id !== id)
         setGoals(next)
         persistDemo('wk_goals', next)
         return
       }
-      if (!userId) return
-      void databaseService.deleteGoal(userId, id)
-        .then(() => setGoals((prev) => prev.filter((x) => x.id !== id)))
-        .catch((err) => setError(errorMessage(err)))
+      if (!userId) throw new Error('Usuário não autenticado.')
+      await run(async () => {
+        await databaseService.deleteGoal(userId, id)
+        setGoals((prev) => prev.filter((x) => x.id !== id))
+      })
     },
     resetDemo: () => {
       if (!isDemo) return
@@ -225,8 +271,9 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       persistDemo('wk_accounts', defaultAccounts)
       persistDemo('wk_goals', defaultGoals)
       persistDemo('wk_preferences', defaultPreferences)
+      setError('')
     },
-  }), [accounts, error, goals, isDemo, loading, preferences, refresh, transactions, userId])
+  }), [accounts, clearError, error, goals, isDemo, loading, preferences, refresh, run, transactions, userId])
 
   return <FinanceContext.Provider value={value}>{children}</FinanceContext.Provider>
 }
