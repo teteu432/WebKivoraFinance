@@ -216,10 +216,20 @@ const addKpi = (
   const [start, end] = range.split(':')
   const startCell = sheet.getCell(start)
   const endCell = sheet.getCell(end)
-  const startRow = startCell.row
-  const endRow = endCell.row
-  const startCol = startCell.col
-  const endCol = endCell.col
+  const startRow = Number(startCell.row)
+  const endRow = Number(endCell.row)
+  const startCol = Number(startCell.col)
+  const endCol = Number(endCell.col)
+
+  if (
+    !Number.isInteger(startRow) ||
+    !Number.isInteger(endRow) ||
+    !Number.isInteger(startCol) ||
+    !Number.isInteger(endCol)
+  ) {
+    throw new Error(`Intervalo de KPI inválido: ${range}`)
+  }
+
   sheet.mergeCells(startRow, startCol, startRow, endCol)
   sheet.mergeCells(startRow + 1, startCol, endRow, endCol)
 
