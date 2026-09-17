@@ -5,7 +5,7 @@ import Brand from '../components/Brand'
 import { useAuth } from '../contexts/AuthContext'
 import { useFinance } from '../contexts/FinanceContext'
 import { useToast } from '../contexts/ToastContext'
-import { brl, daysUntil, dueLabel } from '../utils/format'
+import { brl, dueLabel } from '../utils/format'
 
 const links = [
   ['/dashboard', 'Dashboard', LayoutDashboard],
@@ -17,6 +17,13 @@ const links = [
   ['/relatorios', 'Relatórios', FileChartColumn],
   ['/configuracoes', 'Configurações', Settings],
 ] as const
+
+const daysUntil = (date: string) => {
+  const target = new Date(`${date}T12:00:00`)
+  const today = new Date()
+  today.setHours(12,0,0,0)
+  return Math.ceil((target.getTime() - today.getTime()) / 86400000)
+}
 
 export default function AppLayout() {
   const [open, setOpen] = useState(false)
@@ -51,13 +58,8 @@ export default function AppLayout() {
       if (account.kind === 'receber' && account.status === 'recebido') return false
       return daysUntil(account.dueDate) <= 7
     })
-    .sort((a,b)=>{
-      const dayDiff = daysUntil(a.dueDate) - daysUntil(b.dueDate)
-      if (dayDiff !== 0) return dayDiff
-      if (a.kind !== b.kind) return a.kind === 'pagar' ? -1 : 1
-      return a.name.localeCompare(b.name)
-    })
-    .slice(0,8), [accounts])
+    .sort((a,b)=>a.dueDate.localeCompare(b.dueDate))
+    .slice(0,6), [accounts])
 
   const criticalCount = alerts.filter((account)=>daysUntil(account.dueDate)<=1 || account.status==='atrasado').length
 
@@ -84,19 +86,19 @@ export default function AppLayout() {
         <div className="topbar-spacer"/>
         {!online && <div className="connection-chip offline"><WifiOff size={14}/> Sem conexão</div>}
         <div className="notification-wrap" ref={notifyRef}>
-          <button className="icon-btn notify" aria-label="Notificações" aria-expanded={notificationsOpen} onClick={(e)=>{e.stopPropagation();setNotificationsOpen(v=>!v)}}><Bell size={19}/>{alerts.length > 0 && <span>{alerts.length > 9 ? '9+' : alerts.length}</span>}</button>
+          <button className="icon-btn notify" aria-label="Notificações" aria-expanded={notificationsOpen} onClick={(e)=>{e.stopPropagation();setNotificationsOpen(v=>!v)}}><Bell size={19}/>{criticalCount > 0 && <span>{criticalCount}</span>}</button>
           {notificationsOpen && <div className="notification-panel" onClick={e=>e.stopPropagation()}>
-            <div className="notification-head"><div><strong>Alertas financeiros</strong><span>{alerts.length ? `${criticalCount} crítico${criticalCount===1?'':'s'} · ${alerts.length} no radar` : 'Tudo em ordem'}</span></div></div>
+            <div className="notification-head"><div><strong>Alertas financeiros</strong><span>{alerts.length ? `${alerts.length} compromisso${alerts.length>1?'s':''} próximo${alerts.length>1?'s':''}` : 'Tudo em ordem'}</span></div></div>
             <div className="notification-list">
               {alerts.length===0 ? <div className="notification-empty"><CheckCircle2 size={20}/><span>Nenhuma conta crítica nos próximos 7 dias.</span></div> : alerts.map(account=>{
                 const critical=daysUntil(account.dueDate)<=1 || account.status==='atrasado'
                 return <button type="button" key={account.id} className="notification-item" onClick={()=>{setNotificationsOpen(false);nav('/contas')}}>
-                  <div className={`notification-icon ${critical?'critical':account.kind==='receber'?'income':'warning'}`}><AlertTriangle size={16}/></div>
-                  <div><strong>{account.name}</strong><span>{account.kind === 'receber' ? 'A receber' : 'A pagar'} · {dueLabel(account.dueDate)} · {brl(account.amount)}</span></div>
+                  <div className={`notification-icon ${critical?'critical':'warning'}`}><AlertTriangle size={16}/></div>
+                  <div><strong>{account.name}</strong><span>{dueLabel(account.dueDate)} · {brl(account.amount)}</span></div>
                 </button>
               })}
             </div>
-            <button type="button" className="notification-footer" onClick={()=>{setNotificationsOpen(false);nav('/calendario')}}>Abrir calendário financeiro</button>
+            <button type="button" className="notification-footer" onClick={()=>{setNotificationsOpen(false);nav('/contas')}}>Ver todas as contas</button>
           </div>}
         </div>
         <div className="user-chip"><div className="avatar">{preferences.displayName.slice(0,1).toUpperCase()}</div><div><strong>{preferences.displayName}</strong><span>{isDemo ? 'Demonstração' : preferences.mode === 'empresa' ? 'Empresa' : 'Pessoal'}</span></div></div>

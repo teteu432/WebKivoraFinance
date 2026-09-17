@@ -1,0 +1,15 @@
+import { BrainCircuit, CircleAlert, PiggyBank, TrendingDown, TrendingUp } from 'lucide-react'
+import type { CSSProperties } from 'react'
+import { useFinance } from '../contexts/FinanceContext'
+import { categoryExpenses, projectedBalance, totals } from '../utils/calculations'
+import { brl, daysUntil } from '../utils/format'
+export default function Strategy(){
+ const {transactions,accounts}=useFinance(); const t=totals(transactions); const projected=projectedBalance(transactions,accounts); const savingRate=t.receitas>0?(t.resultado/t.receitas)*100:0; const cats=categoryExpenses(transactions); const top=cats[0]; const weekBills=accounts.filter(a=>a.kind==='pagar'&&a.status!=='pago'&&daysUntil(a.dueDate)>=0&&daysUntil(a.dueDate)<=7).reduce((s,a)=>s+a.amount,0); const fixed=t.despesas>0?Math.min(100,((cats.filter(c=>['Moradia','Assinaturas','Serviços'].includes(c.name)).reduce((s,c)=>s+c.value,0)/t.despesas)*100)):0
+ const insights=[
+  {icon: projected>=0?TrendingUp:TrendingDown,title:'Saldo projetado',text:`Mantendo os compromissos cadastrados, o saldo projetado é ${brl(projected)}.`,tone:projected>=0?'good':'bad'},
+  {icon:PiggyBank,title:'Capacidade de economia',text:`Seu resultado acumulado representa ${savingRate.toFixed(1)}% das receitas registradas.`,tone:savingRate>=15?'good':'warn'},
+  {icon:CircleAlert,title:'Próximos 7 dias',text:`Há ${brl(weekBills)} em contas a pagar previstas para a próxima semana.`,tone:weekBills>0?'warn':'good'},
+  {icon:BrainCircuit,title:'Maior categoria de gasto',text:top?`${top.name} é hoje sua maior categoria, com ${brl(top.value)} registrados.`:'Cadastre despesas para gerar esta análise.',tone:'neutral'},
+ ]
+ return <div className="page-stack"><div className="page-title"><div><span className="eyebrow">Leitura dos seus dados</span><h1>Estratégia financeira</h1><p>Indicadores automáticos para apoiar sua organização financeira.</p></div></div><div className="strategy-hero"><div><span>Índice de comprometimento fixo</span><strong>{fixed.toFixed(0)}%</strong><p>Percentual aproximado das despesas concentrado em moradia, serviços e assinaturas.</p></div><div className="strategy-score"><i style={{'--score':`${Math.min(100,fixed)}%`} as CSSProperties}/></div></div><div className="insights-grid">{insights.map(({icon:Icon,title,text,tone})=><article className={`insight ${tone}`} key={title}><Icon/><div><h3>{title}</h3><p>{text}</p></div></article>)}</div><div className="panel"><h2>Leitura do cenário</h2><p className="strategy-text">{t.receitas>t.despesas?'As receitas registradas estão acima das despesas. O próximo passo é preservar margem para compromissos futuros e direcionar parte do resultado às metas.':'As despesas registradas estão próximas ou acima das receitas. Vale revisar as maiores categorias e priorizar compromissos com vencimento mais próximo.'}</p><div className="disclaimer">Estas análises são organizacionais e baseadas apenas nos dados cadastrados. Não constituem recomendação de investimento.</div></div></div>
+}
