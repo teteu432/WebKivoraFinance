@@ -1,7 +1,6 @@
 import * as ExcelJS from 'exceljs'
 import type { Cell, Workbook, Worksheet } from 'exceljs'
 import type { Account, Goal, Transaction, UserPreferences } from '../types'
-import { categoryExpenses, currentBalance, totals } from './calculations'
 import { daysUntil } from './format'
 
 const COLORS = {
@@ -28,6 +27,29 @@ const COLORS = {
 const currencyFormat = 'R$ #,##0.00;[Red]-R$ #,##0.00'
 const percentFormat = '0.0%'
 const dateFormat = 'dd/mm/yyyy'
+
+export interface FinancialReportOptions {
+  startDate?: string
+  endDate?: string
+  periodLabel?: string
+  includePending?: boolean
+}
+
+const rawTotals = (items: Transaction[]) => {
+  const receitas = items.filter((item) => item.type === 'receita').reduce((sum, item) => sum + item.amount, 0)
+  const despesas = items.filter((item) => item.type === 'despesa').reduce((sum, item) => sum + item.amount, 0)
+  return { receitas, despesas, resultado: receitas - despesas }
+}
+
+const rawCategoryExpenses = (items: Transaction[]) => {
+  const map = new Map<string, number>()
+  items.filter((item) => item.type === 'despesa').forEach((item) => map.set(item.category, (map.get(item.category) ?? 0) + item.amount))
+  return [...map.entries()].map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value)
+}
+
+const reportItems = (items: Transaction[], includePending = false) => includePending
+  ? items
+  : items.filter((item) => item.status === 'confirmado')
 
 const safe = (value?: string) => {
   if (!value) return ''
@@ -176,27 +198,35 @@ const dueText = (account: Account) => {
   return `Vence em ${days} dias`
 }
 
-const monthRows = (transactions: Transaction[], months = 12) => {
-  const now = new Date()
-  return Array.from({ length: months }).map((_, index) => {
-    const date = new Date(now.getFullYear(), now.getMonth() - (months - 1 - index), 1)
-    const year = date.getFullYear()
-    const month = date.getMonth()
+const monthRows = (transactions: Transaction[], startDate?: string, endDate?: string) => {
+  if (!transactions.length && (!startDate || !endDate)) return []
+
+  const sorted = [...transactions].sort((a, b) => a.date.localeCompare(b.date))
+  const first = startDate ? asDate(startDate) : asDate(sorted[0].date)
+  const last = endDate ? asDate(endDate) : asDate(sorted[sorted.length - 1].date)
+  const cursor = new Date(first.getFullYear(), first.getMonth(), 1)
+  const limit = new Date(last.getFullYear(), last.getMonth(), 1)
+  const rows: Array<{ period: string; revenue: number; expenses: number; result: number; savingsRate: number }> = []
+
+  while (cursor <= limit) {
+    const year = cursor.getFullYear()
+    const month = cursor.getMonth()
     const items = transactions.filter((item) => {
       const itemDate = asDate(item.date)
       return itemDate.getFullYear() === year && itemDate.getMonth() === month
     })
-    const revenue = items.filter((x) => x.type === 'receita').reduce((sum, x) => sum + x.amount, 0)
-    const expenses = items.filter((x) => x.type === 'despesa').reduce((sum, x) => sum + x.amount, 0)
-    const result = revenue - expenses
-    return {
-      period: new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(date),
-      revenue,
-      expenses,
-      result,
-      savingsRate: revenue > 0 ? result / revenue : 0,
-    }
-  })
+    const totals = rawTotals(items)
+    rows.push({
+      period: new Intl.DateTimeFormat('pt-BR', { month: 'long', year: 'numeric' }).format(cursor),
+      revenue: totals.receitas,
+      expenses: totals.despesas,
+      result: totals.resultado,
+      savingsRate: totals.receitas > 0 ? totals.resultado / totals.receitas : 0,
+    })
+    cursor.setMonth(cursor.getMonth() + 1)
+  }
+
+  return rows
 }
 
 const reportPeriod = (transactions: Transaction[]) => {
@@ -347,12 +377,12 @@ const addAccountsSheet = (workbook: Workbook, name: string, items: Account[], ki
   return sheet
 }
 
-const addMonthlySheet = (workbook: Workbook, transactions: Transaction[]) => {
+const addMonthlySheet = (workbook: Workbook, transactions: Transaction[], options: FinancialReportOptions = {}) => {
   const sheet = workbook.addWorksheet('Fluxo Mensal')
   configureSheet(sheet)
-  paintTitle(sheet, 'Web Kivora Finance — Fluxo Mensal', 'Comparativo de receitas, despesas e resultado dos últimos 12 meses', 5)
+  paintTitle(sheet, 'Web Kivora Finance — Fluxo Mensal', `Comparativo de receitas, despesas e resultado${options.periodLabel ? ` — ${options.periodLabel}` : ''}`, 5)
   addTableHeader(sheet, 4, ['Período', 'Receitas', 'Despesas', 'Resultado', 'Taxa de poupança'])
-  const data = monthRows(transactions)
+  const data = monthRows(transactions, options.startDate, options.endDate)
   data.forEach((item, index) => {
     const rowNumber = index + 5
     const row = sheet.getRow(rowNumber)
@@ -389,7 +419,7 @@ const addCategoriesSheet = (workbook: Workbook, transactions: Transaction[]) => 
   configureSheet(sheet)
   paintTitle(sheet, 'Web Kivora Finance — Categorias', 'Análise da distribuição das despesas por categoria', 6)
   addTableHeader(sheet, 4, ['Ranking', 'Categoria', 'Total gasto', '% das despesas', 'Qtd. transações', 'Ticket médio'])
-  const categories = categoryExpenses(transactions)
+  const categories = rawCategoryExpenses(transactions)
   const expenseTransactions = transactions.filter((item) => item.type === 'despesa')
   const totalExpenses = categories.reduce((sum, item) => sum + item.value, 0)
 
@@ -453,6 +483,7 @@ const addSummarySheet = (
   accounts: Account[],
   goals: Goal[],
   preferences?: UserPreferences,
+  options: FinancialReportOptions = {},
 ) => {
   const sheet = workbook.addWorksheet('Resumo Executivo', { views: [{ showGridLines: false }] })
   sheet.properties.tabColor = { argb: COLORS.blue }
@@ -462,13 +493,13 @@ const addSummarySheet = (
   paintTitle(sheet, 'WEB KIVORA FINANCE', 'Relatório executivo de gestão financeira', 8)
 
   sheet.mergeCells('A3:H3')
-  sheet.getCell('A3').value = `Perfil: ${safe(preferences?.displayName || 'Usuário')}  •  Modo: ${preferences?.mode === 'empresa' ? 'Empresa' : 'Pessoal'}  •  Período: ${reportPeriod(transactions)}  •  Gerado em: ${new Date().toLocaleString('pt-BR')}`
+  sheet.getCell('A3').value = `Perfil: ${safe(preferences?.displayName || 'Usuário')}  •  Modo: ${preferences?.mode === 'empresa' ? 'Empresa' : 'Pessoal'}  •  Período: ${options.periodLabel || reportPeriod(transactions)}  •  Status: ${options.includePending ? 'Confirmadas + pendentes' : 'Somente confirmadas'}  •  Gerado em: ${new Date().toLocaleString('pt-BR')}`
   sheet.getCell('A3').font = { size: 9, color: { argb: COLORS.muted } }
   sheet.getCell('A3').alignment = { horizontal: 'left', vertical: 'middle' }
   sheet.getRow(3).height = 22
 
-  const txTotals = totals(transactions)
-  const balance = currentBalance(transactions)
+  const txTotals = rawTotals(transactions)
+  const balance = txTotals.resultado
   const pendingPayable = accounts.filter((a) => a.kind === 'pagar' && a.status !== 'pago').reduce((s, a) => s + a.amount, 0)
   const pendingReceivable = accounts.filter((a) => a.kind === 'receber' && a.status !== 'recebido').reduce((s, a) => s + a.amount, 0)
   const overduePayable = accounts.filter((a) => a.kind === 'pagar' && (a.status === 'atrasado' || (a.status !== 'pago' && daysUntil(a.dueDate) < 0)))
@@ -477,7 +508,7 @@ const addSummarySheet = (
   const savingsRate = txTotals.receitas > 0 ? txTotals.resultado / txTotals.receitas : 0
   const expenseRate = txTotals.receitas > 0 ? txTotals.despesas / txTotals.receitas : 0
 
-  addKpi(sheet, 'A5:B7', 'SALDO ATUAL', balance, { money: true, accent: balance >= 0 ? COLORS.green : COLORS.red })
+  addKpi(sheet, 'A5:B7', 'RESULTADO DO PERÍODO', balance, { money: true, accent: balance >= 0 ? COLORS.green : COLORS.red })
   addKpi(sheet, 'C5:D7', 'RECEITAS', txTotals.receitas, { money: true, accent: COLORS.green })
   addKpi(sheet, 'E5:F7', 'DESPESAS', txTotals.despesas, { money: true, accent: COLORS.red })
   addKpi(sheet, 'G5:H7', 'RESULTADO', txTotals.resultado, { money: true, accent: txTotals.resultado >= 0 ? COLORS.green : COLORS.red })
@@ -488,7 +519,7 @@ const addSummarySheet = (
   addKpi(sheet, 'G9:H11', 'TAXA DE POUPANÇA', savingsRate, { percent: true, accent: savingsRate >= 0 ? COLORS.green : COLORS.red })
 
   sectionTitle(sheet, 13, 'Diagnóstico financeiro', 1, 8)
-  const topCategories = categoryExpenses(transactions).slice(0, 5)
+  const topCategories = rawCategoryExpenses(transactions).slice(0, 5)
   const topCategory = topCategories[0]
   const plannedTotal = goals.reduce((s, g) => s + g.targetAmount, 0)
   const savedGoals = goals.reduce((s, g) => s + g.savedAmount, 0)
@@ -599,19 +630,24 @@ export async function exportFinancialReport(
   accounts: Account[],
   goals: Goal[] = [],
   preferences?: UserPreferences,
+  options: FinancialReportOptions = {},
 ) {
   const workbook = new ExcelJS.Workbook()
   setWorkbookMetadata(workbook)
+  const filteredTransactions = reportItems(transactions, options.includePending)
 
-  addSummarySheet(workbook, transactions, accounts, goals, preferences)
-  addMonthlySheet(workbook, transactions)
-  addCategoriesSheet(workbook, transactions)
-  addTransactionSheet(workbook, 'Transações', transactions)
-  addTransactionSheet(workbook, 'Receitas', transactions.filter((item) => item.type === 'receita'))
-  addTransactionSheet(workbook, 'Despesas', transactions.filter((item) => item.type === 'despesa'))
+  addSummarySheet(workbook, filteredTransactions, accounts, goals, preferences, options)
+  addMonthlySheet(workbook, filteredTransactions, options)
+  addCategoriesSheet(workbook, filteredTransactions)
+  addTransactionSheet(workbook, 'Transações', filteredTransactions)
+  addTransactionSheet(workbook, 'Receitas', filteredTransactions.filter((item) => item.type === 'receita'))
+  addTransactionSheet(workbook, 'Despesas', filteredTransactions.filter((item) => item.type === 'despesa'))
   addAccountsSheet(workbook, 'Contas a Pagar', accounts.filter((item) => item.kind === 'pagar'), 'pagar')
   addAccountsSheet(workbook, 'Contas a Receber', accounts.filter((item) => item.kind === 'receber'), 'receber')
   addGoalsSheet(workbook, goals)
 
-  await saveWorkbook(workbook, `WebKivora_Relatorio_Completo_${todayFile()}.xlsx`)
+  const suffix = options.periodLabel
+    ? `_${options.periodLabel.replace(/[^a-zA-Z0-9À-ÿ]+/g, '_').replace(/^_|_$/g, '').slice(0, 45)}`
+    : ''
+  await saveWorkbook(workbook, `WebKivora_Relatorio${suffix}_${todayFile()}.xlsx`)
 }
