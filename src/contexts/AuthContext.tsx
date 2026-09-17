@@ -66,12 +66,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return
     }
 
+    const client = supabase
     let mounted = true
 
     // O evento INITIAL_SESSION usa apenas o estado persistido no navegador.
     // A inicialização abaixo valida a sessão no servidor antes de liberar as
     // telas protegidas, evitando uma sequência de consultas 401 com token antigo.
-    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: listener } = client.auth.onAuthStateChange((event, session) => {
       if (!mounted || event === 'INITIAL_SESSION') return
 
       if (event === 'SIGNED_OUT') {
@@ -89,7 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const restoreValidatedSession = async () => {
       setLoading(true)
 
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+      const { data: sessionData, error: sessionError } = await client.auth.getSession()
       if (!mounted) return
 
       if (sessionError || !sessionData.session) {
@@ -99,13 +100,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       // getUser consulta o Auth server e confirma que o JWT persistido ainda é válido.
-      const { data: userData, error: userError } = await supabase.auth.getUser()
+      const { data: userData, error: userError } = await client.auth.getUser()
       if (!mounted) return
 
       if (userError || !userData.user) {
         // Remove somente a sessão local. Usar signOut global com um JWT já
         // inválido gera 403 e não traz benefício para esta recuperação.
-        await supabase.auth.signOut({ scope: 'local' })
+        await client.auth.signOut({ scope: 'local' })
         if (!mounted) return
         setUser(null)
         setLoading(false)
@@ -118,7 +119,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     void restoreValidatedSession().catch(async () => {
       if (!mounted) return
-      await supabase.auth.signOut({ scope: 'local' }).catch(() => undefined)
+      await client.auth.signOut({ scope: 'local' }).catch(() => undefined)
       if (!mounted) return
       setUser(null)
       setLoading(false)
