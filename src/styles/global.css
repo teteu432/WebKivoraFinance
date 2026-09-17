@@ -140,3 +140,82 @@
   .calendar-legend{grid-template-columns:repeat(2,auto);justify-content:start;column-gap:14px;row-gap:5px}
   .calendar-cell{min-height:58px;padding-left:2px;padding-right:2px}
 }
+
+/* V3.0 - mobile refinement: reports */
+@media(max-width:620px){
+  .reports-page{gap:14px}
+  .reports-page .page-title{gap:11px}
+  .reports-page .page-title h1{font-size:25px;margin-bottom:4px}
+  .reports-page .page-title p{font-size:11px;line-height:1.45}
+  .reports-page .page-title>.primary-btn{width:100%;padding:10px 12px;font-size:10px}
+
+  .report-filter-panel{padding:13px;border-radius:14px}
+  .report-filter-heading{gap:8px}
+  .report-filter-heading>div:first-child{gap:9px}
+  .report-filter-heading strong{font-size:11px}
+  .report-filter-heading span{font-size:9px}
+  .report-status-note{width:100%;padding:7px 9px;border-radius:8px;font-size:8px;line-height:1.35}
+  .report-filter-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:11px}
+  .report-filter-grid label{font-size:9px;gap:5px;min-width:0}
+  .report-filter-grid select,.report-filter-grid input{padding:9px 8px;font-size:10px;min-width:0}
+  .report-filter-error{font-size:9px;padding:8px 9px}
+
+  .report-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+  .report-metrics .metric-card{min-height:108px;padding:13px 11px;border-radius:13px}
+  .report-metrics .metric-top{font-size:9px;gap:5px}
+  .report-metrics .metric-top svg{width:14px;height:14px}
+  .report-metrics .metric-card strong{font-size:18px;margin:12px 0 5px;letter-spacing:-.02em;overflow-wrap:anywhere}
+  .report-metrics .metric-card small{font-size:8px;line-height:1.35;display:block}
+
+  .report-comparison-strip{grid-template-columns:repeat(2,minmax(0,1fr));border-radius:13px}
+  .report-comparison-strip>div{min-height:70px;padding:11px!important;border-bottom:1px solid var(--line)!important;border-right:1px solid var(--line)!important}
+  .report-comparison-strip>div:nth-child(2n){border-right:0!important}
+  .report-comparison-strip>div:nth-last-child(-n+2){border-bottom:0!important}
+  .report-comparison-strip span{font-size:8px}
+  .report-comparison-strip strong{font-size:9px;line-height:1.35;margin-top:4px}
+
+  .report-chart-grid{gap:12px}
+  .reports-page .panel{padding:14px;border-radius:14px}
+  .reports-page .panel-head h2{font-size:13px}
+  .reports-page .panel-head p{font-size:9px;line-height:1.4}
+  .report-chart-box{height:215px;margin-top:8px}
+  .reports-page .recharts-text{font-size:9px}
+  .reports-page .recharts-legend-item-text{font-size:9px!important}
+  .reports-page .recharts-default-legend{margin-top:0!important}
+
+  .report-insights-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+  .report-insight-card{padding:12px 10px;gap:8px;border-radius:12px;min-width:0}
+  .report-insight-card:nth-child(3){grid-column:1/-1}
+  .report-insight-card>svg{width:16px;height:16px}
+  .report-insight-card span{font-size:8px;line-height:1.35}
+  .report-insight-card strong{font-size:17px;margin:3px 0 2px}
+  .report-insight-card small{font-size:8px;line-height:1.35}
+
+  .report-analysis-grid{gap:12px}
+  .report-category-list{gap:10px;margin-top:10px}
+  .report-category-row{gap:8px}
+  .report-category-row>span{font-size:9px;gap:6px}
+  .report-category-row b{width:18px;height:18px;border-radius:6px;font-size:8px}
+  .report-category-row>strong{font-size:9px;text-align:right}
+  .report-category-row>strong small{font-size:8px;margin-left:3px}
+  .report-category-bar{height:4px;margin-top:5px}
+
+  .report-top-columns{grid-template-columns:1fr;gap:12px;margin-top:10px}
+  .report-top-columns h3{font-size:9px;margin-bottom:3px}
+  .report-top-row{padding:9px 0;gap:8px}
+  .report-top-row>div strong,.report-top-row>strong{font-size:9px}
+  .report-top-row>div span{font-size:8px}
+
+  .report-export-footer{padding:13px!important;gap:12px}
+  .report-export-footer>div{gap:9px}
+  .report-export-footer svg{width:22px;height:22px}
+  .report-export-footer h2{font-size:12px}
+  .report-export-footer p{font-size:8px;line-height:1.45}
+  .report-export-footer .secondary-btn{padding:9px 10px;font-size:10px}
+}
+
+@media(max-width:360px){
+  .report-filter-grid{grid-template-columns:1fr}
+  .report-metrics .metric-card strong{font-size:16px}
+  .report-comparison-strip>div{padding:10px 9px!important}
+}

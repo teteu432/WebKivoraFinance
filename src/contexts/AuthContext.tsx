@@ -67,16 +67,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     let mounted = true
-    supabase.auth.getSession().then(({ data, error }) => {
-      if (!mounted) return
-      if (error) console.error('Falha ao restaurar sessão:', error)
-      setUser(data.session?.user ?? null)
-      setLoading(false)
+
+    // O evento INITIAL_SESSION usa apenas o estado persistido no navegador.
+    // A inicialização abaixo valida a sessão no servidor antes de liberar as
+    // telas protegidas, evitando uma sequência de consultas 401 com token antigo.
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mounted || event === 'INITIAL_SESSION') return
+
+      if (event === 'SIGNED_OUT') {
+        setUser(null)
+        setLoading(false)
+        return
+      }
+
+      if (session?.user) {
+        setUser(session.user)
+        setLoading(false)
+      }
     })
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const restoreValidatedSession = async () => {
+      setLoading(true)
+
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
       if (!mounted) return
-      setUser(session?.user ?? null)
+
+      if (sessionError || !sessionData.session) {
+        setUser(null)
+        setLoading(false)
+        return
+      }
+
+      // getUser consulta o Auth server e confirma que o JWT persistido ainda é válido.
+      const { data: userData, error: userError } = await supabase.auth.getUser()
+      if (!mounted) return
+
+      if (userError || !userData.user) {
+        // Remove somente a sessão local. Usar signOut global com um JWT já
+        // inválido gera 403 e não traz benefício para esta recuperação.
+        await supabase.auth.signOut({ scope: 'local' })
+        if (!mounted) return
+        setUser(null)
+        setLoading(false)
+        return
+      }
+
+      setUser(userData.user)
+      setLoading(false)
+    }
+
+    void restoreValidatedSession().catch(async () => {
+      if (!mounted) return
+      await supabase.auth.signOut({ scope: 'local' }).catch(() => undefined)
+      if (!mounted) return
+      setUser(null)
       setLoading(false)
     })
 
@@ -124,7 +168,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return
       }
       if (supabase) {
-        const { error } = await supabase.auth.signOut()
+        // Para o logout da aplicação basta encerrar a sessão deste navegador.
+        // Isso também evita um 403 em /signout?scope=global quando o token já expirou.
+        const { error } = await supabase.auth.signOut({ scope: 'local' })
         if (error) throw new Error(friendlyAuthError(error))
       }
       setUser(null)
