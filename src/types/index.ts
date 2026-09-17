@@ -11,6 +11,7 @@ export interface Transaction {
   paymentMethod: string
   status: TransactionStatus
   notes?: string
+  sourceAccountId?: string
 }
 
 export type AccountKind = 'pagar' | 'receber'

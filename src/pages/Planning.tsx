@@ -1,21 +1,22 @@
 import { Pencil, Plus, Target, Trash2 } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import ConfirmDialog from '../components/ConfirmDialog'
+import EmptyState from '../components/EmptyState'
 import Modal from '../components/Modal'
 import { useFinance } from '../contexts/FinanceContext'
 import { useToast } from '../contexts/ToastContext'
 import type { Goal } from '../types'
-import { brl, shortDate } from '../utils/format'
-import { isValidDate, isValidMoney, normalizeText } from '../utils/validation'
+import { addDaysISO, brl, shortDate } from '../utils/format'
+import { isValidDate, isValidMoney, isValidNonNegativeMoney, normalizeText } from '../utils/validation'
 
-const initial={name:'',description:'',targetAmount:'',savedAmount:'0',monthlyAmount:'',targetDate:new Date(Date.now()+180*86400000).toISOString().slice(0,10)}
+const createInitial=()=>({name:'',description:'',targetAmount:'',savedAmount:'0',monthlyAmount:'',targetDate:addDaysISO(180)})
 
 export default function Planning(){
  const {goals,addGoal,updateGoal,removeGoal}=useFinance()
  const {showToast}=useToast()
  const [open,setOpen]=useState(false)
  const [editing,setEditing]=useState<Goal|null>(null)
- const [form,setForm]=useState(initial)
+ const [form,setForm]=useState(createInitial)
  const [formError,setFormError]=useState('')
  const [saving,setSaving]=useState(false)
  const [deleteTarget,setDeleteTarget]=useState<Goal|null>(null)
@@ -33,8 +34,8 @@ export default function Planning(){
    if(name.length<2)return setFormError('Informe um nome com pelo menos 2 caracteres.')
    if(name.length>180)return setFormError('O nome pode ter no máximo 180 caracteres.')
    if(!isValidMoney(targetAmount))return setFormError('Informe um valor objetivo válido maior que zero.')
-   if(!Number.isFinite(savedAmount)||savedAmount<0)return setFormError('O valor reservado não pode ser negativo.')
-   if(!Number.isFinite(monthlyAmount)||monthlyAmount<0)return setFormError('O valor mensal não pode ser negativo.')
+   if(!isValidNonNegativeMoney(savedAmount))return setFormError('Informe um valor reservado válido, igual ou maior que zero.')
+   if(!isValidNonNegativeMoney(monthlyAmount))return setFormError('Informe um valor mensal válido, igual ou maior que zero.')
    if(!isValidDate(form.targetDate))return setFormError('Informe uma data objetivo válida.')
    if(description.length>500)return setFormError('A descrição pode ter no máximo 500 caracteres.')
 
@@ -43,7 +44,7 @@ export default function Planning(){
      setSaving(true)
      if(editing){await updateGoal({...payload,id:editing.id});showToast('Meta atualizada com sucesso.')}
      else{await addGoal(payload);showToast('Meta criada com sucesso.')}
-     setOpen(false);setEditing(null);setForm(initial)
+     setOpen(false);setEditing(null);setForm(createInitial())
    }catch(err){setFormError(err instanceof Error?err.message:'Não foi possível salvar a meta.')}
    finally{setSaving(false)}
  }
@@ -56,8 +57,8 @@ export default function Planning(){
  }
 
  return <div className="page-stack">
-   <div className="page-title"><div><span className="eyebrow">Objetivos</span><h1>Planejamento</h1><p>Transforme metas em valores e prazos claros.</p></div><button className="primary-btn" onClick={()=>{setEditing(null);setForm(initial);setFormError('');setOpen(true)}}><Plus size={17}/> Nova meta</button></div>
-   <div className="goals-grid">{goals.map(g=>{const pct=Math.min(100,(g.savedAmount/g.targetAmount)*100);const remaining=Math.max(0,g.targetAmount-g.savedAmount);const months=g.monthlyAmount>0?Math.ceil(remaining/g.monthlyAmount):null;return <article className="goal-card" key={g.id}><div className="goal-icon"><Target/></div><div className="row-actions goal-actions"><button className="icon-btn" aria-label={`Editar ${g.name}`} onClick={()=>edit(g)}><Pencil size={16}/></button><button className="icon-btn danger-text" aria-label={`Excluir ${g.name}`} onClick={()=>setDeleteTarget(g)}><Trash2 size={16}/></button></div><h3>{g.name}</h3><p>{g.description}</p><div className="goal-values"><div><span>Guardado</span><strong>{brl(g.savedAmount)}</strong></div><div><span>Objetivo</span><strong>{brl(g.targetAmount)}</strong></div></div><div className="progress large"><i style={{width:`${pct}%`}}/></div><div className="goal-foot"><span>{pct.toFixed(0)}% concluído</span><span>{months?`~${months} meses restantes`:`Meta até ${shortDate(g.targetDate)}`}</span></div></article>})}</div>
+   <div className="page-title"><div><span className="eyebrow">Objetivos</span><h1>Planejamento</h1><p>Transforme metas em valores e prazos claros.</p></div><button className="primary-btn" onClick={()=>{setEditing(null);setForm(createInitial());setFormError('');setOpen(true)}}><Plus size={17}/> Nova meta</button></div>
+   {goals.length===0 ? <div className="panel"><EmptyState text="Nenhuma meta cadastrada. Crie sua primeira meta financeira."/></div> : <div className="goals-grid">{goals.map(g=>{const pct=Math.min(100,(g.savedAmount/g.targetAmount)*100);const remaining=Math.max(0,g.targetAmount-g.savedAmount);const months=g.monthlyAmount>0?Math.ceil(remaining/g.monthlyAmount):null;return <article className="goal-card" key={g.id}><div className="goal-icon"><Target/></div><div className="row-actions goal-actions"><button className="icon-btn" aria-label={`Editar ${g.name}`} onClick={()=>edit(g)}><Pencil size={16}/></button><button className="icon-btn danger-text" aria-label={`Excluir ${g.name}`} onClick={()=>setDeleteTarget(g)}><Trash2 size={16}/></button></div><h3>{g.name}</h3><p>{g.description}</p><div className="goal-values"><div><span>Guardado</span><strong>{brl(g.savedAmount)}</strong></div><div><span>Objetivo</span><strong>{brl(g.targetAmount)}</strong></div></div><div className="progress large"><i style={{width:`${pct}%`}}/></div><div className="goal-foot"><span>{pct.toFixed(0)}% concluído</span><span>{months?`~${months} meses restantes`:`Meta até ${shortDate(g.targetDate)}`}</span></div></article>})}</div>}
 
    {open&&<Modal title={editing?'Editar meta':'Nova meta'} onClose={()=>{if(!saving)setOpen(false)}}><form className="form-grid" onSubmit={submit}>
      <label className="span-2">Nome<input maxLength={180} value={form.name} onChange={e=>setForm({...form,name:e.target.value})} required/></label>

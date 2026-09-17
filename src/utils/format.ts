@@ -2,6 +2,19 @@ export const brl = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'c
 export const shortDate = (date: string) => new Intl.DateTimeFormat('pt-BR').format(new Date(`${date}T12:00:00`))
 export const monthLabel = (date: Date) => new Intl.DateTimeFormat('pt-BR', { month: 'short' }).format(date).replace('.', '')
 
+export const localDateISO = (date = new Date()) => {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+export const addDaysISO = (days: number, base = new Date()) => {
+  const date = new Date(base)
+  date.setDate(date.getDate() + days)
+  return localDateISO(date)
+}
+
 export const daysUntil = (isoDate: string) => {
   const now = new Date(); now.setHours(0,0,0,0)
   const due = new Date(`${isoDate}T00:00:00`)

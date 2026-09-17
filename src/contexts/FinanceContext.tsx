@@ -21,6 +21,8 @@ type FinanceContextValue = {
   addAccount: (value: Omit<Account, 'id'>) => Promise<void>
   updateAccount: (value: Account) => Promise<void>
   removeAccount: (id: string) => Promise<void>
+  settleAccount: (id: string, settlementDate: string) => Promise<void>
+  reopenAccount: (id: string) => Promise<void>
   addGoal: (value: Omit<Goal, 'id'>) => Promise<void>
   updateGoal: (value: Goal) => Promise<void>
   removeGoal: (id: string) => Promise<void>
@@ -158,6 +160,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       })
     },
     updateTransaction: async (item) => {
+      if (item.sourceAccountId) throw new Error('Esta movimentação foi gerada por uma conta. Reabra a conta para alterá-la.')
       if (isDemo) {
         const next = transactions.map((x) => x.id === item.id ? item : x)
         setTransactions(next)
@@ -171,6 +174,8 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       })
     },
     removeTransaction: async (id) => {
+      const linked = transactions.find((x) => x.id === id)?.sourceAccountId
+      if (linked) throw new Error('Esta movimentação está vinculada a uma conta. Reabra a conta antes de excluí-la.')
       if (isDemo) {
         const next = transactions.filter((x) => x.id !== id)
         setTransactions(next)
@@ -210,6 +215,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       })
     },
     removeAccount: async (id) => {
+      if (transactions.some((x) => x.sourceAccountId === id)) throw new Error('Esta conta possui uma movimentação vinculada. Reabra a conta antes de excluí-la.')
       if (isDemo) {
         const next = accounts.filter((x) => x.id !== id)
         setAccounts(next)
@@ -220,6 +226,66 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       await run(async () => {
         await databaseService.deleteAccount(userId, id)
         setAccounts((prev) => prev.filter((x) => x.id !== id))
+      })
+    },
+    settleAccount: async (id, settlementDate) => {
+      const account = accounts.find((x) => x.id === id)
+      if (!account) throw new Error('Conta não encontrada.')
+      if (isDemo) {
+        const settled: Account = { ...account, status: account.kind === 'pagar' ? 'pago' : 'recebido' }
+        const existing = transactions.find((x) => x.sourceAccountId === id)
+        const linkedTransaction: Transaction = {
+          id: existing?.id ?? uid(),
+          type: account.kind === 'pagar' ? 'despesa' : 'receita',
+          description: account.name,
+          category: account.category,
+          amount: account.amount,
+          date: settlementDate,
+          paymentMethod: account.paymentMethod,
+          status: 'confirmado',
+          notes: account.notes || account.description || undefined,
+          sourceAccountId: account.id,
+        }
+        const nextAccounts = accounts.map((x) => x.id === id ? settled : x)
+        const nextTransactions = existing
+          ? transactions.map((x) => x.id === existing.id ? linkedTransaction : x)
+          : [linkedTransaction, ...transactions]
+        setAccounts(nextAccounts)
+        setTransactions(nextTransactions)
+        persistDemo('wk_accounts', nextAccounts)
+        persistDemo('wk_transactions', nextTransactions)
+        return
+      }
+      if (!userId) throw new Error('Usuário não autenticado.')
+      await run(async () => {
+        const result = await databaseService.settleAccount(userId, id, settlementDate)
+        setAccounts((prev) => prev.map((x) => x.id === result.account.id ? result.account : x))
+        setTransactions((prev) => {
+          const exists = prev.some((x) => x.id === result.transaction.id)
+          return exists
+            ? prev.map((x) => x.id === result.transaction.id ? result.transaction : x)
+            : [result.transaction, ...prev]
+        })
+      })
+    },
+    reopenAccount: async (id) => {
+      const account = accounts.find((x) => x.id === id)
+      if (!account) throw new Error('Conta não encontrada.')
+      if (isDemo) {
+        const reopened: Account = { ...account, status: account.kind === 'pagar' ? 'pendente' : 'previsto' }
+        const nextAccounts = accounts.map((x) => x.id === id ? reopened : x)
+        const nextTransactions = transactions.filter((x) => x.sourceAccountId !== id)
+        setAccounts(nextAccounts)
+        setTransactions(nextTransactions)
+        persistDemo('wk_accounts', nextAccounts)
+        persistDemo('wk_transactions', nextTransactions)
+        return
+      }
+      if (!userId) throw new Error('Usuário não autenticado.')
+      await run(async () => {
+        const reopened = await databaseService.reopenAccount(userId, id)
+        setAccounts((prev) => prev.map((x) => x.id === reopened.id ? reopened : x))
+        setTransactions((prev) => prev.filter((x) => x.sourceAccountId !== id))
       })
     },
     addGoal: async (item) => {

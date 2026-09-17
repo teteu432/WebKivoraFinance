@@ -6,7 +6,7 @@ const requireClient = () => {
   return supabase
 }
 
-type TransactionRow = { id:string; type:Transaction['type']; description:string; category:string; amount:number|string; date:string; payment_method:string; status:Transaction['status']; notes:string|null }
+type TransactionRow = { id:string; type:Transaction['type']; description:string; category:string; amount:number|string; date:string; payment_method:string; status:Transaction['status']; notes:string|null; source_account_id:string|null }
 type AccountRow = { id:string; kind:Account['kind']; name:string; description:string; category:string; amount:number|string; due_date:string; status:Account['status']; payment_method:string; notes:string|null }
 type GoalRow = { id:string; name:string; description:string; target_amount:number|string; saved_amount:number|string; monthly_amount:number|string; target_date:string }
 
@@ -20,6 +20,7 @@ const transactionFromRow = (row: TransactionRow): Transaction => ({
   paymentMethod: row.payment_method,
   status: row.status,
   notes: row.notes ?? undefined,
+  sourceAccountId: row.source_account_id ?? undefined,
 })
 
 const accountFromRow = (row: AccountRow): Account => ({
@@ -102,6 +103,7 @@ export const databaseService = {
       payment_method: item.paymentMethod,
       status: item.status,
       notes: item.notes || null,
+      source_account_id: item.sourceAccountId || null,
     }).select().single()
     if (error) throw error
     return transactionFromRow(data as TransactionRow)
@@ -181,6 +183,33 @@ export const databaseService = {
     const client = requireClient()
     const { error } = await client.from('accounts').delete().eq('id', id).eq('user_id', userId)
     if (error) throw error
+  },
+
+  async settleAccount(userId: string, accountId: string, settlementDate: string): Promise<{ account: Account; transaction: Transaction }> {
+    const client = requireClient()
+    const { data, error } = await client.rpc('settle_account', {
+      p_account_id: accountId,
+      p_date: settlementDate,
+    })
+    if (error) throw error
+    const payload = data as { account?: AccountRow; transaction?: TransactionRow } | null
+    if (!payload?.account || !payload?.transaction) throw new Error('Não foi possível concluir a baixa da conta.')
+    const account = accountFromRow(payload.account)
+    const transaction = transactionFromRow(payload.transaction)
+    // Defesa adicional: a função do banco já valida auth.uid(), mas mantemos o parâmetro
+    // para que a assinatura do serviço continue consistente com as demais operações.
+    void userId
+    return { account, transaction }
+  },
+
+  async reopenAccount(userId: string, accountId: string): Promise<Account> {
+    const client = requireClient()
+    const { data, error } = await client.rpc('reopen_account', { p_account_id: accountId })
+    if (error) throw error
+    const payload = data as { account?: AccountRow } | null
+    if (!payload?.account) throw new Error('Não foi possível reabrir a conta.')
+    void userId
+    return accountFromRow(payload.account)
   },
 
   async listGoals(userId: string): Promise<Goal[]> {

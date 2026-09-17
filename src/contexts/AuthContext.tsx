@@ -96,10 +96,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loading,
     signIn: async (email, password) => {
       if (!supabase) throw new Error('Supabase ainda não foi configurado neste ambiente.')
-      const { error } = await supabase.auth.signInWithPassword({ email: normalizeEmail(email), password })
+      const { data, error } = await supabase.auth.signInWithPassword({ email: normalizeEmail(email), password })
       if (error) throw new Error(friendlyAuthError(error))
       sessionStorage.removeItem(DEMO_KEY)
       setIsDemo(false)
+      setUser(data.user ?? data.session?.user ?? null)
     },
     signUp: async (name, email, password) => {
       if (!supabase) throw new Error('Supabase ainda não foi configurado neste ambiente.')
@@ -112,6 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         },
       })
       if (error) throw new Error(friendlyAuthError(error))
+      if (data.session) setUser(data.user ?? data.session.user)
       return { needsEmailConfirmation: !data.session }
     },
     signOut: async () => {

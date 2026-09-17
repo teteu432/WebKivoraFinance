@@ -1,4 +1,4 @@
-import { Download, Pencil, Plus, Search, Trash2 } from 'lucide-react'
+import { Download, Link2, Pencil, Plus, Search, Trash2 } from 'lucide-react'
 import { useMemo, useState, type FormEvent } from 'react'
 import ConfirmDialog from '../components/ConfirmDialog'
 import EmptyState from '../components/EmptyState'
@@ -6,37 +6,41 @@ import Modal from '../components/Modal'
 import { useFinance } from '../contexts/FinanceContext'
 import { useToast } from '../contexts/ToastContext'
 import type { Transaction, TransactionType } from '../types'
-import { exportTransactionsXlsx } from '../utils/exportToExcel'
-import { brl, shortDate } from '../utils/format'
+import { brl, localDateISO, shortDate } from '../utils/format'
 import { isValidDate, isValidMoney, normalizeText } from '../utils/validation'
 
 const categories = ['Alimentação','Transporte','Moradia','Saúde','Educação','Lazer','Assinaturas','Serviços','Investimentos','Salário','Vendas','Outros']
-const initial = { type:'despesa' as TransactionType, description:'', category:'Outros', amount:'', date:new Date().toISOString().slice(0,10), paymentMethod:'PIX', status:'confirmado' as Transaction['status'], notes:'' }
+const createInitial = () => ({ type:'despesa' as TransactionType, description:'', category:'Outros', amount:'', date:localDateISO(), paymentMethod:'PIX', status:'confirmado' as Transaction['status'], notes:'' })
 
 export default function Transactions() {
   const { transactions, addTransaction, updateTransaction, removeTransaction } = useFinance()
   const { showToast } = useToast()
   const [open,setOpen]=useState(false)
   const [editing,setEditing]=useState<Transaction|null>(null)
-  const [form,setForm]=useState(initial)
+  const [form,setForm]=useState(createInitial)
   const [query,setQuery]=useState('')
   const [type,setType]=useState<'todos'|TransactionType>('todos')
+  const [status,setStatus]=useState<'todos'|Transaction['status']>('todos')
   const [formError,setFormError]=useState('')
   const [saving,setSaving]=useState(false)
   const [deleteTarget,setDeleteTarget]=useState<Transaction|null>(null)
   const [deleting,setDeleting]=useState(false)
   const [exporting,setExporting]=useState(false)
 
-  const filtered = useMemo(()=>transactions.filter(t=>(type==='todos'||t.type===type) && `${t.description} ${t.category}`.toLowerCase().includes(query.trim().toLowerCase())),[transactions,type,query])
+  const filtered = useMemo(()=>transactions.filter(t=>(type==='todos'||t.type===type) && (status==='todos'||t.status===status) && `${t.description} ${t.category} ${t.paymentMethod}`.toLowerCase().includes(query.trim().toLowerCase())),[transactions,type,status,query])
 
   const openNew = () => {
     setEditing(null)
-    setForm(initial)
+    setForm(createInitial())
     setFormError('')
     setOpen(true)
   }
 
   const edit=(t:Transaction)=>{
+    if(t.sourceAccountId){
+      showToast('Esta movimentação foi gerada por uma conta. Reabra a conta para alterá-la.','info')
+      return
+    }
     setEditing(t)
     setForm({type:t.type,description:t.description,category:t.category,amount:String(t.amount),date:t.date,paymentMethod:t.paymentMethod,status:t.status,notes:t.notes??''})
     setFormError('')
@@ -70,7 +74,7 @@ export default function Transactions() {
       }
       setOpen(false)
       setEditing(null)
-      setForm(initial)
+      setForm(createInitial())
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Não foi possível salvar a transação.')
     } finally {
@@ -96,6 +100,7 @@ export default function Transactions() {
     if (!filtered.length) return showToast('Não há transações para exportar.', 'info')
     try {
       setExporting(true)
+      const { exportTransactionsXlsx } = await import('../utils/exportToExcel')
       await exportTransactionsXlsx(filtered)
       showToast(`XLSX gerado com ${filtered.length} ${filtered.length === 1 ? 'transação' : 'transações'}.`)
     } catch (err) {
@@ -115,11 +120,12 @@ export default function Transactions() {
     </div>
 
     <div className="toolbar">
-      <div className="input-icon search"><Search size={17}/><input aria-label="Buscar transações" placeholder="Buscar por descrição ou categoria" value={query} onChange={e=>setQuery(e.target.value)}/></div>
+      <div className="input-icon search"><Search size={17}/><input aria-label="Buscar transações" placeholder="Buscar descrição, categoria ou forma" value={query} onChange={e=>setQuery(e.target.value)}/></div>
       <select aria-label="Filtrar por tipo" value={type} onChange={e=>setType(e.target.value as typeof type)}><option value="todos">Todos os tipos</option><option value="receita">Receitas</option><option value="despesa">Despesas</option></select>
+      <select aria-label="Filtrar por status" value={status} onChange={e=>setStatus(e.target.value as typeof status)}><option value="todos">Todos os status</option><option value="confirmado">Confirmadas</option><option value="pendente">Pendentes</option></select>
     </div>
 
-    <div className="panel table-panel">{filtered.length===0?<EmptyState/>:<div className="table-wrap"><table><thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Tipo</th><th>Forma</th><th>Valor</th><th></th></tr></thead><tbody>{filtered.map(t=><tr key={t.id}><td>{shortDate(t.date)}</td><td><strong>{t.description}</strong></td><td>{t.category}</td><td><span className={`badge ${t.type}`}>{t.type}</span></td><td>{t.paymentMethod}</td><td className={t.type==='receita'?'positive':'negative'}>{t.type==='receita'?'+':'-'} {brl(t.amount)}</td><td><div className="row-actions"><button className="icon-btn" aria-label={`Editar ${t.description}`} onClick={()=>edit(t)}><Pencil size={16}/></button><button className="icon-btn danger-text" aria-label={`Excluir ${t.description}`} onClick={()=>setDeleteTarget(t)}><Trash2 size={16}/></button></div></td></tr>)}</tbody></table></div>}</div>
+    <div className="panel table-panel">{filtered.length===0?<EmptyState/>:<div className="table-wrap"><table><thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Tipo</th><th>Forma</th><th>Status</th><th>Valor</th><th></th></tr></thead><tbody>{filtered.map(t=><tr key={t.id}><td>{shortDate(t.date)}</td><td><div className="transaction-description"><strong>{t.description}</strong>{t.sourceAccountId&&<span className="source-badge"><Link2 size={11}/> Conta</span>}</div></td><td>{t.category}</td><td><span className={`badge ${t.type}`}>{t.type}</span></td><td>{t.paymentMethod}</td><td><span className={`badge ${t.status}`}>{t.status}</span></td><td className={t.type==='receita'?'positive':'negative'}>{t.type==='receita'?'+':'-'} {brl(t.amount)}</td><td><div className="row-actions"><button className="icon-btn" disabled={Boolean(t.sourceAccountId)} title={t.sourceAccountId?'Gerenciada pela conta vinculada.':'Editar transação'} aria-label={`Editar ${t.description}`} onClick={()=>edit(t)}><Pencil size={16}/></button><button className="icon-btn danger-text" disabled={Boolean(t.sourceAccountId)} title={t.sourceAccountId?'Reabra a conta antes de excluir.':'Excluir transação'} aria-label={`Excluir ${t.description}`} onClick={()=>{if(!t.sourceAccountId)setDeleteTarget(t)}}><Trash2 size={16}/></button></div></td></tr>)}</tbody></table></div>}</div>
 
     {open&&<Modal title={editing?'Editar transação':'Nova transação'} onClose={()=>{if(!saving)setOpen(false)}}><form className="form-grid" onSubmit={submit}>
       <label>Tipo<select value={form.type} onChange={e=>setForm({...form,type:e.target.value as TransactionType})}><option value="receita">Receita</option><option value="despesa">Despesa</option></select></label>

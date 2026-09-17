@@ -1,6 +1,16 @@
-# Web Kivora Finance V2.2.1
+# Web Kivora Finance V2.3
 
-Correção de autenticação: mensagens específicas para limites do Supabase e bloqueio local contra envio duplicado do formulário de login/cadastro.
+Revisão funcional focada em consistência financeira e experiência de uso:
+
+- Saldo atual, receitas, despesas, categorias e séries mensais consideram apenas transações confirmadas.
+- Transações pendentes passam a compor o saldo projetado, sem inflar o saldo atual.
+- Filtro e identificação visual de status na tela de Transações.
+- Datas padrão geradas no horário local, evitando mudança indevida de dia no Brasil.
+- Contas a receber atrasadas agora recebem prioridade visual correta.
+- Calendário diferencia itens liquidados, atrasados e previstos.
+- Validação de datas e valores de metas reforçada.
+- Login atualiza a sessão local imediatamente após autenticação bem-sucedida.
+- Baixa de contas agora deixa explícito que o saldo atual é movimentado pelas Transações, evitando dupla contabilização automática.
 
 # Web Kivora Finance — V2.2
 
@@ -64,19 +74,24 @@ npm run dev
 
 ## Banco de dados
 
-A V2.2 não exige nenhuma migração adicional em relação à V2.1. Se o banco da V2 já está funcionando, mantenha-o como está.
-
-Para uma instalação nova, execute no SQL Editor do Supabase:
+A V2.6 adiciona o vínculo entre **Contas** e **Transações**. Para uma instalação nova, execute no SQL Editor do Supabase, nesta ordem:
 
 ```text
 supabase/migrations/001_initial_schema.sql
+supabase/migrations/002_accounts_transactions_link.sql
 ```
 
-## Atualizando a partir da V2.1
+Se o banco da versão anterior já está funcionando, execute **somente**:
 
-Se você já configurou seu `.env.local`, mantenha esse arquivo no computador. Ele não está incluído no ZIP e não deve ser enviado para o GitHub.
+```text
+supabase/migrations/002_accounts_transactions_link.sql
+```
 
-Você pode substituir o código da V2.1 pelo da V2.2 e manter o mesmo projeto Supabase. As tabelas existentes (`profiles`, `transactions`, `accounts` e `goals`) continuam compatíveis.
+A migração adiciona `source_account_id` às transações e cria as funções seguras de baixa e reabertura de contas. A baixa ocorre de forma atômica no PostgreSQL: a conta é liquidada e a movimentação vinculada é criada na mesma operação.
+
+## Atualizando a partir da versão anterior
+
+Mantenha seu `.env.local` no computador. Ele não está incluído no ZIP e não deve ser enviado para o GitHub. Depois de substituir os arquivos do projeto, execute a migração `002_accounts_transactions_link.sql` no Supabase antes de testar a baixa automática de contas.
 
 ## Verificação recomendada
 
@@ -85,13 +100,14 @@ Após atualizar, teste:
 1. Login e logout.
 2. Cadastro de uma transação.
 3. Edição e exclusão de uma transação.
-4. Cadastro e baixa de uma conta.
-5. Criação e exclusão de uma meta.
-6. Alteração do nome em Configurações.
-7. Sino de notificações.
-8. Exportação XLSX.
-9. Recuperação de senha.
-10. Clique com botão direito em várias páginas para confirmar que o travamento não retornou.
+4. Cadastro de uma conta e baixa automática, confirmando que a transação vinculada é criada.
+5. Reabertura da conta, confirmando que a transação automática é removida.
+6. Criação e exclusão de uma meta.
+7. Alteração do nome em Configurações.
+8. Sino de notificações.
+9. Exportação XLSX.
+10. Recuperação de senha.
+11. Clique com botão direito em várias páginas para confirmar que o travamento não retornou.
 
 ## Segurança
 

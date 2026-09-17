@@ -1,10 +1,7 @@
 import type { Account, Goal, Transaction, UserPreferences } from '../types'
+import { addDaysISO } from '../utils/format'
 
-const d = (offset: number) => {
-  const date = new Date()
-  date.setDate(date.getDate() + offset)
-  return date.toISOString().slice(0, 10)
-}
+const d = (offset: number) => addDaysISO(offset)
 
 export const defaultTransactions: Transaction[] = [
   { id: 't1', type: 'receita', description: 'Salário', category: 'Salário', amount: 4200, date: d(-8), paymentMethod: 'PIX', status: 'confirmado' },
