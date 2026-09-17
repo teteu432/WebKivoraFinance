@@ -8,10 +8,13 @@ const supabasePublishableKey = (
 
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabasePublishableKey)
 
+const authStorage = typeof window !== 'undefined' ? window.sessionStorage : undefined
+
 export const supabase: SupabaseClient | null = isSupabaseConfigured
   ? createClient(supabaseUrl!, supabasePublishableKey!, {
       auth: {
         persistSession: true,
+        storage: authStorage,
         autoRefreshToken: true,
         detectSessionInUrl: true,
       },
